@@ -2,8 +2,8 @@ use crate::PatchProvider;
 use hyper::{Body, Request, Response, StatusCode};
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use xz2::stream::{LzmaOptions, Stream};
 use anyhow::Result;
 
@@ -12,12 +12,9 @@ const HEADER_SIZE_OFFSET: usize = 10;
 
 pub async fn serve(
     req: Request<Body>,
-    patch_provider: Arc<PatchProvider>,
+    patch_provider_lock: Arc<RwLock<PatchProvider>>,
 ) -> anyhow::Result<Response<Body>> {
-    let url_path = req.uri().path().trim_start_matches('/');
-    let path = Path::new(url_path);
-
-    let latest_version = match patch_provider.get_latest_version(path) {
+    let latest_version = match get_matching_patch_location(&req, patch_provider_lock) {
         Some(patch) => patch,
         _ => return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty())?)
     };
@@ -39,6 +36,14 @@ pub async fn serve(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .body(Body::from(compressed))?)
+}
+
+fn get_matching_patch_location(req: &Request<Body>, patch_provider_lock: Arc<RwLock<PatchProvider>>) -> Option<PathBuf> {
+    let patch_provider = patch_provider_lock.read().unwrap();
+    let url_path = req.uri().path().trim_start_matches('/');
+    let path = Path::new(url_path);
+
+    return patch_provider.get_latest_version(path);
 }
 
 fn compress(content: &Vec<u8>) -> Result<Vec<u8>> {

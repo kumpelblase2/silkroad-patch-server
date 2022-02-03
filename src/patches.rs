@@ -25,14 +25,19 @@ pub struct PatchProvider {
 }
 
 impl PatchProvider {
-    pub fn load_patches<T: Into<PathBuf>>(location: T) -> Result<Self> {
+    pub fn new<T: Into<PathBuf>>(location: T) -> Result<PatchProvider> {
         let path = location.into();
         ensure!(path.is_dir(), "Given location is not a directory.");
+        Ok(PatchProvider {
+            location: path,
+            patches: Vec::new()
+        })
+    }
 
+    pub fn load_patches(&mut self) -> Result<()> {
         let mut patches = Vec::new();
-        for entry in path
-            .read_dir()
-            .expect("Couldn't list files in patch root dir")
+        for entry in self.location
+            .read_dir()?
         {
             if let Ok(entry) = entry {
                 let version = entry.file_name().to_str().map(|name| usize::from_str(name)).ok_or_else(|| anyhow!("Unable to read directory name"))??;
@@ -42,10 +47,8 @@ impl PatchProvider {
             }
         }
 
-        Ok(PatchProvider {
-            location: path,
-            patches,
-        })
+        self.patches = patches;
+        Ok(())
     }
 
     pub fn get_latest_version<T: AsRef<Path>>(&self, path: T) -> Option<PathBuf> {
@@ -60,6 +63,10 @@ impl PatchProvider {
         available_versions
             .last()
             .map(|(_, path)| PathBuf::from(path))
+    }
+
+    pub fn get_patch_count(&self) -> usize {
+        self.patches.len()
     }
 }
 
